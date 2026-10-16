@@ -48,6 +48,8 @@ export interface WalletConfig {
   port: number;
   webhookUrl?: string;
   webhookSecret?: Secret;
+  whitelistUrl?: string;
+  whitelistServiceKey?: Secret;
 }
 
 const bigintString = z.string().regex(/^\d+$/).transform((v) => BigInt(v));
@@ -89,6 +91,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().default(3002),
   WEBHOOK_URL: z.string().url().optional(),
   WEBHOOK_SECRET: z.string().min(16).optional(),
+  WHITELIST_URL: z.string().url().optional(),
+  WHITELIST_SERVICE_KEY: z.string().min(24).optional(),
 });
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): WalletConfig {
@@ -101,6 +105,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   });
   if (!assets.some((a) => a.type === 'native')) throw new Error('ASSETS_JSON must include the native asset');
   if (e.WEBHOOK_URL && !e.WEBHOOK_SECRET) throw new Error('WEBHOOK_SECRET is required with WEBHOOK_URL');
+  if (Boolean(e.WHITELIST_URL) !== Boolean(e.WHITELIST_SERVICE_KEY)) throw new Error('WHITELIST_URL and WHITELIST_SERVICE_KEY must be set together');
   return {
     databaseUrl: e.DATABASE_URL,
     redisUrl: e.REDIS_URL,
@@ -123,5 +128,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     port: e.PORT,
     webhookUrl: e.WEBHOOK_URL,
     webhookSecret: e.WEBHOOK_SECRET ? new Secret(e.WEBHOOK_SECRET) : undefined,
+    whitelistUrl: e.WHITELIST_URL,
+    whitelistServiceKey: e.WHITELIST_SERVICE_KEY ? new Secret(e.WHITELIST_SERVICE_KEY) : undefined,
   };
 }

@@ -13,6 +13,7 @@ export type WithdrawalStatus = 'queued' | 'broadcasting' | 'broadcast' | 'confir
 
 export interface Withdrawal {
   id: string;
+  idempotencyKey: string;
   userId: string;
   asset: string;
   amount: string;
@@ -27,9 +28,10 @@ export interface Withdrawal {
   createdAt: string;
 }
 
-const COLS = `id, user_id, asset, amount::text AS amount, to_address, status, tx_hash, tx_hashes, nonce, gas_bumps, attempts, error, created_at`;
+const COLS = `id, idempotency_key, user_id, asset, amount::text AS amount, to_address, status, tx_hash, tx_hashes, nonce, gas_bumps, attempts, error, created_at`;
 const toWithdrawal = (r: any): Withdrawal => ({
   id: r.id,
+  idempotencyKey: r.idempotency_key,
   userId: r.user_id,
   asset: r.asset,
   amount: r.amount,
@@ -126,6 +128,11 @@ export class WithdrawalService {
   async get(id: string): Promise<Withdrawal | null> {
     const res = await this.d.pool.query(`SELECT ${COLS} FROM withdrawals WHERE id = $1`, [id]);
     return res.rows[0] ? toWithdrawal(res.rows[0]) : null;
+  }
+
+  async list(userId: string, limit = 50): Promise<Withdrawal[]> {
+    const res = await this.d.pool.query(`SELECT ${COLS} FROM withdrawals WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`, [userId, limit]);
+    return res.rows.map(toWithdrawal);
   }
 
   // ---------- sending ----------
@@ -284,12 +291,12 @@ export class WithdrawalService {
   /** Delivers final outcomes to the event sink. Retried until accepted. */
   async deliver(): Promise<number> {
     const rows = await this.d.pool.query(
-      `SELECT id, user_id, asset, amount::text AS amount, to_address, status, tx_hash, error FROM withdrawals WHERE status IN ('confirmed', 'failed') AND notified_at IS NULL ORDER BY updated_at LIMIT 100`,
+      `SELECT id, idempotency_key, user_id, asset, amount::text AS amount, to_address, status, tx_hash, error FROM withdrawals WHERE status IN ('confirmed', 'failed') AND notified_at IS NULL ORDER BY updated_at LIMIT 100`,
     );
     let sent = 0;
     for (const r of rows.rows) {
       try {
-        await this.d.sink.withdrawalFinalized({ id: r.id, userId: r.user_id, asset: r.asset, amount: r.amount, to: r.to_address, status: r.status, txHash: r.tx_hash, error: r.error });
+        await this.d.sink.withdrawalFinalized({ id: r.id, idempotencyKey: r.idempotency_key, userId: r.user_id, asset: r.asset, amount: r.amount, to: r.to_address, status: r.status, txHash: r.tx_hash, error: r.error });
       } catch (err) {
         console.error(`withdrawal event ${r.id} not delivered: ${(err as Error).message}`);
         break;

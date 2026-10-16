@@ -13,6 +13,7 @@ const schemas = {
   address: z.object({ userId }).strict(),
   withdrawal: z.object({ userId, asset: z.string().min(2).max(10), amount, to: z.string().min(10).max(100) }).strict(),
   id: z.object({ id: z.string().uuid() }),
+  withdrawals: z.object({ userId, limit: z.coerce.number().int().min(1).max(200).default(50) }),
   deposits: z.object({ userId, limit: z.coerce.number().int().min(1).max(200).default(50) }),
 };
 
@@ -68,6 +69,11 @@ export function buildApp(d: AppDeps): FastifyInstance {
     const body = schemas.withdrawal.parse(req.body);
     const r = await d.withdrawals.request({ userId: body.userId, asset: body.asset, amount: BigInt(body.amount), to: body.to, key });
     return reply.status(r.replayed ? 200 : 201).send(r);
+  });
+
+  app.get('/withdrawals', async (req) => {
+    const q = schemas.withdrawals.parse(req.query);
+    return d.withdrawals.list(q.userId, q.limit);
   });
 
   app.get('/withdrawals/:id', async (req) => {

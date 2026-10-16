@@ -14,6 +14,8 @@ export interface DepositEvent {
 
 export interface WithdrawalEvent {
   id: string;
+  /** The key the caller used when requesting it, so the caller can match the event to its own record. */
+  idempotencyKey: string;
   userId: string;
   asset: string;
   amount: string;
@@ -48,7 +50,7 @@ export class LogSink implements EventSink {
     console.log(`[event] deposit.confirmed id=${e.id} user=${e.userId} ${e.amount} ${e.asset} tx=${e.txHash}`);
   }
   async withdrawalFinalized(e: WithdrawalEvent) {
-    console.log(`[event] withdrawal.${e.status} id=${e.id} user=${e.userId} ${e.amount} ${e.asset}`);
+    console.log(`[event] withdrawal.${e.status} id=${e.id} key=${e.idempotencyKey} user=${e.userId} ${e.amount} ${e.asset}`);
   }
 }
 

@@ -91,6 +91,22 @@ describe('withdrawals', () => {
   });
 });
 
+describe('listing withdrawals', () => {
+  it('returns only the asked-for user\'s withdrawals', async () => {
+    const to = randomAddress();
+    env.whitelist.allow('alice', to);
+    env.whitelist.allow('bob', to);
+    for (const [user, key] of [['alice', 'l-1'], ['alice', 'l-2'], ['bob', 'l-3']]) {
+      await call('POST', '/withdrawals', { userId: user, asset: 'ETH', amount: '100', to }, { 'x-api-key': KEY, 'idempotency-key': key });
+    }
+    const res = await call('GET', '/withdrawals?userId=alice');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body.every((w: any) => w.userId === 'alice')).toBe(true);
+    expect((await call('GET', '/withdrawals')).status).toBe(400);
+  });
+});
+
 describe('deposits and hot wallet', () => {
   it('lists a user\'s deposits', async () => {
     await env.watcher.cycle();

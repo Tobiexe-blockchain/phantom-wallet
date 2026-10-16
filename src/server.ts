@@ -10,7 +10,7 @@ import { migrate } from './migrate.js';
 import { createWithdrawalQueue, type WithdrawalQueue } from './queue.js';
 import { Sweeper } from './sweeper.js';
 import { DepositWatcher } from './watcher.js';
-import { StaticWhitelist } from './whitelist.js';
+import { HttpWhitelistChecker, StaticWhitelist, type WhitelistChecker } from './whitelist.js';
 import { WithdrawalService } from './withdrawals.js';
 
 const config = loadConfig();
@@ -27,8 +27,13 @@ const addresses = new AddressService(pool, depositXpub(mnemonic));
 const watcher = new DepositWatcher(pool, chain, config, sink);
 const sweeper = new Sweeper(pool, chain, hot, { assets: config.assets, mnemonic: config.mnemonic });
 
-// Replace StaticWhitelist with a client for the auth service's whitelist before using this for anything real.
-const whitelist = new StaticWhitelist();
+let whitelist: WhitelistChecker;
+if (config.whitelistUrl && config.whitelistServiceKey) {
+  whitelist = new HttpWhitelistChecker(config.whitelistUrl, config.whitelistServiceKey);
+} else {
+  console.warn('WHITELIST_URL is not set: every withdrawal will be refused because no address is whitelisted.');
+  whitelist = new StaticWhitelist();
+}
 
 let queue: WithdrawalQueue | undefined;
 const withdrawals: WithdrawalService = new WithdrawalService({

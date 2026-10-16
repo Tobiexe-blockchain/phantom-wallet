@@ -41,6 +41,7 @@ Internal service API. Callers send `x-api-key`. Do not expose it to browsers. Am
 | POST | `/addresses` | `{ userId }` returns the user's deposit address, creating it once |
 | GET | `/addresses/:userId` | |
 | POST | `/withdrawals` | `{ userId, asset, amount, to }` with an `Idempotency-Key` header |
+| GET | `/withdrawals?userId=` | A user's withdrawals, newest first |
 | GET | `/withdrawals/:id` | status: `queued`, `broadcasting`, `broadcast`, `confirmed`, `failed` |
 | GET | `/deposits?userId=` | |
 | GET | `/hot-wallet` | balances and low-balance flags |
@@ -64,12 +65,13 @@ Internal service API. Callers send `x-api-key`. Do not expose it to browsers. Am
 | Running on mainnet by mistake | Chain ID is checked against a testnet allowlist at startup and the RPC's reported chain must match. | `config.test.ts` |
 | Stale RPC answers | Client-side caching is turned off, so nonces and block heights are never old. (The test suite found this one.) | all chain tests |
 | Unauthorized callers | Shared API key compared in constant time. | `api.test.ts` |
+| Whitelist service down or confused | Only an explicit `true` allows a withdrawal. Errors, timeouts, and bad answers refuse it. | `whitelistClient.test.ts` |
 
 ## Known limits
 
 - **One process holds every key.** The same mnemonic derives the hot wallet and all deposit keys. In production, keep the xpub-only parts (addresses, watcher) apart from the signer, and keep keys in a KMS or HSM.
 - **Only direct transfers are detected.** ETH sent by a contract (an internal transfer) does not appear as a top-level transaction, so it is missed.
-- **Whitelist is a placeholder.** `server.ts` uses an in-memory list. Connect `WhitelistChecker` to the auth service's whitelist before relying on it.
+- **Whitelist depends on the auth service.** Set `WHITELIST_URL` and `WHITELIST_SERVICE_KEY` and each withdrawal asks phantom-auth. If it cannot answer, the withdrawal is refused (HTTP 503), never allowed. Without those settings every withdrawal is refused.
 - **Reorg protection is limited to the confirmation depth.** A deeper reorg is not handled.
 - **No manual approval step** for large withdrawals, and no fee charged to users. The hot wallet pays gas.
 - **Plain ERC-20 only.** Tokens that take a fee on transfer or rebase are not supported.
@@ -79,7 +81,7 @@ Internal service API. Callers send `x-api-key`. Do not expose it to browsers. Am
 ## Connecting to the other services
 
 - Credit the ledger from the `deposit.confirmed` event, using the event `id` as the idempotency key.
-- Request withdrawals only after the ledger has locked the funds, and release or settle them on `withdrawal.confirmed` or `withdrawal.failed`.
+- Request withdrawals only after the ledger has locked the funds. Use the ledger's withdrawal id as the `Idempotency-Key`: the finished-withdrawal event carries it back as `idempotencyKey`, so the receiver can confirm or fail the right ledger withdrawal.
 
 ## Structure
 
@@ -92,5 +94,5 @@ src/sweeper.ts     deposit sweeping and hot wallet status
 src/queue.ts       BullMQ worker
 src/app.ts         HTTP API
 migrations/        SQL schema
-tests/             69 tests against a local chain, PostgreSQL and Redis
+tests/             77 tests against a local chain, PostgreSQL and Redis
 ```

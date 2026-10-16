@@ -107,6 +107,29 @@ describe('requesting a withdrawal', () => {
   });
 });
 
+describe('listing and event details', () => {
+  it('lists one user\'s withdrawals, newest first, with the idempotency key', async () => {
+    const a = await request('ETH', 1n, 'alice');
+    const b = await request('ETH', 2n, 'alice');
+    await request('ETH', 3n, 'bob');
+    const list = await env.withdrawals.list('alice');
+    expect(list.map((w) => w.id)).toEqual([b.withdrawal.id, a.withdrawal.id]);
+    expect(list.every((w) => w.userId === 'alice')).toBe(true);
+    expect(list[0].idempotencyKey).toMatch(/^k-/);
+    expect(await env.withdrawals.list('nobody')).toEqual([]);
+  });
+
+  it('puts the idempotency key on the finished-withdrawal event', async () => {
+    await env.fund(env.hot.address, 5n * ETH);
+    const r = await request();
+    await env.withdrawals.process(r.withdrawal.id);
+    await env.mine(2);
+    await env.withdrawals.monitor();
+    await env.withdrawals.deliver();
+    expect(env.sink.withdrawals[0].idempotencyKey).toBe(r.withdrawal.idempotencyKey);
+  });
+});
+
 describe('sending', () => {
   it('sends ETH from the hot wallet and confirms after enough blocks', async () => {
     await env.fund(env.hot.address, 5n * ETH);
